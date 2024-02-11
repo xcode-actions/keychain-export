@@ -18,6 +18,33 @@ struct KeychainExport : AsyncParsableCommand {
 		let certificate = try findCertificate(named: entityName)
 		let identity = try findIdentity(matching: certificate)
 		
+		let certificateData = try {
+			let alertTitle = "BEWARE!" as CFString
+			let alertPrompt = "You’re exporting a private key, you fool." as CFString
+			var keyParams = SecItemImportExportKeyParameters(
+				version: UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION),
+				flags: [/*.securePassphrase*/],
+				passphrase: nil,
+				alertTitle: Unmanaged.passUnretained(alertTitle),
+				alertPrompt: Unmanaged.passUnretained(alertPrompt),
+				accessRef: nil, keyUsage: nil, keyAttributes: nil
+			)
+			var res: CFData?
+			let err = SecItemExport(certificate, .formatX509Cert, .pemArmour, &keyParams, &res)
+			guard err == noErr else {throw Self.secErrorFrom(statusCode: err)}
+			return res! as Data
+			/* The following does not work.
+			 * There might be a way to make it work, but I don’t know it. */
+//			var error: Unmanaged<CFError>?
+//			guard let data = SecKeyCopyExternalRepresentation(privateKey, &error) else {
+//				throw SimpleError("Failed copying private key content: \((error?.takeUnretainedValue()).flatMap{ "\($0)" } ?? "Unknown error").")
+//			}
+//			return data as NSData
+		}()
+		guard let certificateString = String(data: certificateData, encoding: .ascii) else {
+			throw SimpleError("Cannot read certificate data as PEM.")
+		}
+		
 		let privateKey = try {
 			var res: SecKey?
 			let err = SecIdentityCopyPrivateKey(identity, &res)
@@ -25,7 +52,7 @@ struct KeychainExport : AsyncParsableCommand {
 			return res!
 		}()
 		let privateKeyData = try {
-			let password = "42toto42" as CFTypeRef
+			let password = "toto" as CFTypeRef
 			let alertTitle = "BEWARE!" as CFString
 			let alertPrompt = "You’re exporting a private key, you fool." as CFString
 			var keyParams = SecItemImportExportKeyParameters(
@@ -52,6 +79,7 @@ struct KeychainExport : AsyncParsableCommand {
 		guard let privateKeyString = String(data: privateKeyData, encoding: .ascii) else {
 			throw SimpleError("Cannot read private key data as PEM.")
 		}
+		print(certificateString)
 		print(privateKeyString)
 	}
 	
