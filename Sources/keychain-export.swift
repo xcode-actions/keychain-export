@@ -82,6 +82,7 @@ struct KeychainExport : AsyncParsableCommand {
 //			return data as NSData
 		}()
 		
+		/* Use OpenSSL to export the unencrypted private key. */
 		let b = try BIO_new(BIO_s_mem() ?! SimpleError("Cannot allocation BIO mem.")) ?! SimpleError("Cannot create a BIO.")
 		defer {BIO_free(b)}
 		guard (privateKeyData.withUnsafeBytes{ bytes in BIO_write(b, bytes.baseAddress!, Int32(bytes.count)) }) == privateKeyData.count else {
