@@ -1,7 +1,9 @@
 import Foundation
 import Security
+import System
 
 import ArgumentParser
+import ProcessInvocation
 
 
 
@@ -76,11 +78,63 @@ struct KeychainExport : AsyncParsableCommand {
 //			return data as NSData
 		}()
 		
-		guard let privateKeyString = String(data: privateKeyData, encoding: .ascii) else {
-			throw SimpleError("Cannot read private key data as PEM.")
+		/* Yeah I know, I could/should use COpenSSL… */
+		let fdRead = try fdForStdin(with: privateKeyData)
+		let pi = ProcessInvocation(
+			"openssl", "rsa", "-in", "/dev/stdin", "-passin", "pass:toto", "-out", "/dev/stdout",
+			stdin: fdRead, stdoutRedirect: .capture, stderrRedirect: .toNull,
+			lineSeparators: .none
+		)
+		let output = try await pi.invokeAndGetOutput(encoding: .ascii)
+		guard let privateKeyString = output.first?.line, output.count == 1 else {
+			throw SimpleError("Unexpected number of lines from ProcessInvocation; only exactly one should have been possible, got \(output.count).")
 		}
 		print(certificateString)
 		print(privateKeyString)
+	}
+	
+	private func writeData(_ data: Data, to fd: FileDescriptor) throws {
+		let writtenRef = IntRef(0)
+		let fhWrite = FileHandle(fileDescriptor: fd.rawValue)
+		fhWrite.writeabilityHandler = { fh in
+			data.withUnsafeBytes{ (bytes: UnsafeRawBufferPointer) in
+				let writtenTotal: Int
+				let writtenBefore = writtenRef.value
+				
+				let writtenNow = {
+					var ret: Int
+					repeat {
+						ret = write(fh.fileDescriptor, bytes.baseAddress!.advanced(by: writtenBefore), bytes.count - writtenBefore)
+					} while ret == -1 && errno == EINTR
+					return ret
+				}()
+				if writtenNow >= 0 {
+					writtenTotal = writtenNow + writtenBefore
+					writtenRef.value = writtenTotal
+				} else {
+					if [EAGAIN, EWOULDBLOCK].contains(errno) {
+						/* We ignore the write error and let the writeabilityHandler call us back (let’s hope it will!). */
+						writtenTotal = writtenBefore
+					} else {
+						writtenTotal = -1
+//						logger.warning("Failed write end of fd for pipe to swift.", metadata: ["errno": "\(errno)", "errno-str": "\(Errno(rawValue: errno).localizedDescription)"])
+					}
+				}
+				
+				if bytes.count - writtenTotal <= 0 || writtenTotal == -1 {
+					fhWrite.writeabilityHandler = nil
+					if close(fh.fileDescriptor) == -1 {
+//						logger.warning("Failed closing write end of fd for pipe to swift.", metadata: ["errno": "\(errno)", "errno-str": "\(Errno(rawValue: errno).localizedDescription)"])
+					}
+				}
+			}
+		}
+	}
+	
+	private func fdForStdin(with data: Data) throws -> FileDescriptor {
+		let pipe = try ProcessInvocation.unownedPipe()
+		try writeData(data, to: pipe.fdWrite)
+		return pipe.fdRead
 	}
 	
 	private func findIdentity(matching certificate: SecCertificate) throws -> SecIdentity {
@@ -171,6 +225,17 @@ struct SimpleError : Error {
 	var message: String
 	init(_ message: String) {
 		self.message = message
+	}
+	
+}
+
+
+private class IntRef {
+	
+	var value: Int
+	
+	init(_ value: Int) {
+		self.value = value
 	}
 	
 }
