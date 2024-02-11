@@ -10,18 +10,18 @@
       }
     },
     {
-      "identity" : "extenderz",
+      "identity" : "copenssl",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/xcode-actions/eXtenderZ.git",
+      "location" : "https://github.com/xcode-actions/COpenSSL.git",
       "state" : {
-        "revision" : "c59e94553295a7e8a0c3ce1465a2bed073cb6ca9",
-        "version" : "1.0.7"
+        "revision" : "47a2954ae824b7ce22beecf8afb73ac56dc708f4",
+        "version" : "1.1.115"
       }
     },
     {
       "identity" : "stream-reader",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/xcode-actions/stream-reader.git",
+      "location" : "https://github.com/Frizlab/stream-reader.git",
       "state" : {
         "revision" : "13c99289668e1dedfcf28c05867cb8fe0860b133",
         "version" : "3.5.2"
@@ -43,24 +43,6 @@
       "state" : {
         "revision" : "e97a6fcb1ab07462881ac165fdbb37f067e205d5",
         "version" : "1.5.4"
-      }
-    },
-    {
-      "identity" : "swift-process-invocation",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/xcode-actions/swift-process-invocation.git",
-      "state" : {
-        "revision" : "5b74d422f99ad2bc6a16e075d1653712a59dfd6e",
-        "version" : "1.0.0"
-      }
-    },
-    {
-      "identity" : "swift-signal-handling",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/xcode-actions/swift-signal-handling.git",
-      "state" : {
-        "revision" : "3f28ea749033705c38e75eb7c3d7e52b723e8252",
-        "version" : "1.1.1"
       }
     },
     {

@@ -3,7 +3,9 @@ import Security
 import System
 
 import ArgumentParser
-import ProcessInvocation
+import COpenSSL
+import StreamReader
+import UnwrapOrThrow
 
 
 
@@ -78,63 +80,27 @@ struct KeychainExport : AsyncParsableCommand {
 //			return data as NSData
 		}()
 		
-		/* Yeah I know, I could/should use COpenSSL… */
-		let fdRead = try fdForStdin(with: privateKeyData)
-		let pi = ProcessInvocation(
-			"openssl", "rsa", "-in", "/dev/stdin", "-passin", "pass:toto", "-out", "/dev/stdout",
-			stdin: fdRead, stdoutRedirect: .capture, stderrRedirect: .toNull,
-			lineSeparators: .none
-		)
-		let output = try await pi.invokeAndGetOutput(encoding: .ascii)
-		guard let privateKeyString = output.first?.line, output.count == 1 else {
-			throw SimpleError("Unexpected number of lines from ProcessInvocation; only exactly one should have been possible, got \(output.count).")
+		let b = try BIO_new(BIO_s_mem() ?! SimpleError("Cannot allocation BIO mem.")) ?! SimpleError("Cannot create a BIO.")
+		defer {BIO_free(b)}
+		guard (privateKeyData.withUnsafeBytes{ bytes in BIO_write(b, bytes.baseAddress!, Int32(bytes.count)) }) == privateKeyData.count else {
+			throw SimpleError("Failed to write all the data to BIO.")
 		}
+		var password = "toto".utf8CString
+		guard let pkey = (password.withUnsafeMutableBytes{ bytes in PEM_read_bio_PrivateKey(b, nil, nil, bytes.baseAddress!) }) else {
+			throw SimpleError("Cannot read PEM from BIO.")
+		}
+		defer {EVP_PKEY_free(pkey)}
+		let bo = try BIO_new(BIO_s_mem() ?! SimpleError("Cannot allocation BIO mem.")) ?! SimpleError("Cannot create a BIO.")
+		defer {BIO_free(bo)}
+		guard PEM_write_bio_PKCS8PrivateKey(bo, pkey, nil, nil, 0, nil, nil) != 0 else {
+			throw SimpleError("Cannot write PEM to BIO.")
+		}
+		let reader = GenericStreamReader(stream: OpenSSLBio(bio: bo), bufferSize: 1024, bufferSizeIncrement: 512)
+		let decodedPrivateKeyData = try reader.readDataToEnd()
+		let decodedPrivateKeyString = try String(data: decodedPrivateKeyData, encoding: .ascii) ?! SimpleError("Cannot decode decoded pkey as ascii String.")
+		
 		print(certificateString)
-		print(privateKeyString)
-	}
-	
-	private func writeData(_ data: Data, to fd: FileDescriptor) throws {
-		let writtenRef = IntRef(0)
-		let fhWrite = FileHandle(fileDescriptor: fd.rawValue)
-		fhWrite.writeabilityHandler = { fh in
-			data.withUnsafeBytes{ (bytes: UnsafeRawBufferPointer) in
-				let writtenTotal: Int
-				let writtenBefore = writtenRef.value
-				
-				let writtenNow = {
-					var ret: Int
-					repeat {
-						ret = write(fh.fileDescriptor, bytes.baseAddress!.advanced(by: writtenBefore), bytes.count - writtenBefore)
-					} while ret == -1 && errno == EINTR
-					return ret
-				}()
-				if writtenNow >= 0 {
-					writtenTotal = writtenNow + writtenBefore
-					writtenRef.value = writtenTotal
-				} else {
-					if [EAGAIN, EWOULDBLOCK].contains(errno) {
-						/* We ignore the write error and let the writeabilityHandler call us back (let’s hope it will!). */
-						writtenTotal = writtenBefore
-					} else {
-						writtenTotal = -1
-//						logger.warning("Failed write end of fd for pipe to swift.", metadata: ["errno": "\(errno)", "errno-str": "\(Errno(rawValue: errno).localizedDescription)"])
-					}
-				}
-				
-				if bytes.count - writtenTotal <= 0 || writtenTotal == -1 {
-					fhWrite.writeabilityHandler = nil
-					if close(fh.fileDescriptor) == -1 {
-//						logger.warning("Failed closing write end of fd for pipe to swift.", metadata: ["errno": "\(errno)", "errno-str": "\(Errno(rawValue: errno).localizedDescription)"])
-					}
-				}
-			}
-		}
-	}
-	
-	private func fdForStdin(with data: Data) throws -> FileDescriptor {
-		let pipe = try ProcessInvocation.unownedPipe()
-		try writeData(data, to: pipe.fdWrite)
-		return pipe.fdRead
+		print(decodedPrivateKeyString)
 	}
 	
 	private func findIdentity(matching certificate: SecCertificate) throws -> SecIdentity {
@@ -236,6 +202,28 @@ private class IntRef {
 	
 	init(_ value: Int) {
 		self.value = value
+	}
+	
+}
+
+
+private class OpenSSLBio : GenericReadStream {
+	
+	var bio: OpaquePointer!
+	
+	init(bio: OpaquePointer!) {
+		self.bio = bio
+	}
+	
+	func read(_ buffer: UnsafeMutableRawPointer, maxLength len: Int) throws -> Int {
+		var res = Int(0)
+		guard BIO_ctrl(bio, BIO_CTRL_EOF, 0, nil) == 0 else {
+			return 0
+		}
+		guard BIO_read_ex(bio, buffer, len, &res) != 0 else {
+			throw SimpleError("Failed reading from BIO.")
+		}
+		return res
 	}
 	
 }
