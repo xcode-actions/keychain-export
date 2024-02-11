@@ -12,6 +12,8 @@ import UnwrapOrThrow
 @main
 struct KeychainExport : AsyncParsableCommand {
 	
+	static let dummyPassword = "toto"
+	
 //	@Option
 //	var entityType: EntityType = .certificate
 	
@@ -56,7 +58,7 @@ struct KeychainExport : AsyncParsableCommand {
 			return res!
 		}()
 		let privateKeyData = try {
-			let password = "toto" as CFTypeRef
+			let password = Self.dummyPassword as CFTypeRef
 			let alertTitle = "BEWARE!" as CFString
 			let alertPrompt = "You’re exporting a private key, you fool." as CFString
 			var keyParams = SecItemImportExportKeyParameters(
@@ -85,7 +87,7 @@ struct KeychainExport : AsyncParsableCommand {
 		guard (privateKeyData.withUnsafeBytes{ bytes in BIO_write(b, bytes.baseAddress!, Int32(bytes.count)) }) == privateKeyData.count else {
 			throw SimpleError("Failed to write all the data to BIO.")
 		}
-		var password = "toto".utf8CString
+		var password = Self.dummyPassword.utf8CString
 		guard let pkey = (password.withUnsafeMutableBytes{ bytes in PEM_read_bio_PrivateKey(b, nil, nil, bytes.baseAddress!) }) else {
 			throw SimpleError("Cannot read PEM from BIO.")
 		}
