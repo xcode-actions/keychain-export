@@ -23,8 +23,8 @@ struct KeychainExport : AsyncParsableCommand {
 		let identity = try findIdentity(matching: certificate)
 		
 		let certificateData = try {
-			let alertTitle = "BEWARE!" as CFString
-			let alertPrompt = "You’re exporting a private key, you fool." as CFString
+			let alertTitle = "Certificate Export" as CFString
+			let alertPrompt = "Give us your password; we needs it to export the certificate!" as CFString
 			var keyParams = SecItemImportExportKeyParameters(
 				version: UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION),
 				flags: [/*.securePassphrase*/],
