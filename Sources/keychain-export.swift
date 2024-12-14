@@ -14,9 +14,9 @@ struct KeychainExport : AsyncParsableCommand {
 	
 	static let dummyPassword = "toto"
 	
-	@Option
+	@Flag
 	var skipCertificate: Bool = false
-	@Option
+	@Flag
 	var skipPrivateKey: Bool = false
 	
 	@Argument
