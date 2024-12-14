@@ -14,8 +14,8 @@ struct KeychainExport : AsyncParsableCommand {
 	
 	static let dummyPassword = "toto"
 	
-//	@Option
-//	var entityType: EntityType = .certificate
+	@Option
+	var skipCertificate: Bool = false
 	
 	@Argument
 	var entityName: String
@@ -24,31 +24,37 @@ struct KeychainExport : AsyncParsableCommand {
 		let certificate = try findCertificate(named: entityName)
 		let identity = try findIdentity(matching: certificate)
 		
-		let certificateData = try {
-			let alertTitle = "Certificate Export" as CFString
-			let alertPrompt = "Give us your password; we needs it to export the certificate!" as CFString
-			var keyParams = SecItemImportExportKeyParameters(
-				version: UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION),
-				flags: [/*.securePassphrase*/],
-				passphrase: nil,
-				alertTitle: Unmanaged.passUnretained(alertTitle),
-				alertPrompt: Unmanaged.passUnretained(alertPrompt),
-				accessRef: nil, keyUsage: nil, keyAttributes: nil
-			)
-			var res: CFData?
-			let err = SecItemExport(certificate, .formatX509Cert, .pemArmour, &keyParams, &res)
-			guard err == noErr else {throw Self.secErrorFrom(statusCode: err)}
-			return res! as Data
-			/* The following does not work.
-			 * There might be a way to make it work, but I don’t know it. */
-//			var error: Unmanaged<CFError>?
-//			guard let data = SecKeyCopyExternalRepresentation(privateKey, &error) else {
-//				throw SimpleError("Failed copying private key content: \((error?.takeUnretainedValue()).flatMap{ "\($0)" } ?? "Unknown error").")
-//			}
-//			return data as NSData
-		}()
-		guard let certificateString = String(data: certificateData, encoding: .ascii) else {
-			throw SimpleError("Cannot read certificate data as PEM.")
+		let certificateString: String?
+		if !skipCertificate {
+			let certificateData = try {
+				let alertTitle = "Certificate Export" as CFString
+				let alertPrompt = "Give us your password; we needs it to export the certificate!" as CFString
+				var keyParams = SecItemImportExportKeyParameters(
+					version: UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION),
+					flags: [/*.securePassphrase*/],
+					passphrase: nil,
+					alertTitle: Unmanaged.passUnretained(alertTitle),
+					alertPrompt: Unmanaged.passUnretained(alertPrompt),
+					accessRef: nil, keyUsage: nil, keyAttributes: nil
+				)
+				var res: CFData?
+				let err = SecItemExport(certificate, .formatX509Cert, .pemArmour, &keyParams, &res)
+				guard err == noErr else {throw Self.secErrorFrom(statusCode: err)}
+				return res! as Data
+				/* The following does not work.
+				 * There might be a way to make it work, but I don’t know it. */
+//				var error: Unmanaged<CFError>?
+//				guard let data = SecKeyCopyExternalRepresentation(privateKey, &error) else {
+//					throw SimpleError("Failed copying private key content: \((error?.takeUnretainedValue()).flatMap{ "\($0)" } ?? "Unknown error").")
+//				}
+//				return data as NSData
+			}()
+			guard let str = String(data: certificateData, encoding: .ascii) else {
+				throw SimpleError("Cannot read certificate data as PEM.")
+			}
+			certificateString = str
+		} else {
+			certificateString = nil
 		}
 		
 		let privateKey = try {
@@ -102,7 +108,9 @@ struct KeychainExport : AsyncParsableCommand {
 		let decodedPrivateKeyData = try reader.readDataToEnd()
 		let decodedPrivateKeyString = try String(data: decodedPrivateKeyData, encoding: .ascii) ?! SimpleError("Cannot decode decoded pkey as ascii String.")
 		
-		print(certificateString)
+		if let certificateString {
+			print(certificateString)
+		}
 		print(decodedPrivateKeyString)
 	}
 	
